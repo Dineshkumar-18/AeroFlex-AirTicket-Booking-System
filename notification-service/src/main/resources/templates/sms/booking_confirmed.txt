@@ -1,0 +1,8 @@
+Booking confirmed!
+
+PNR: [[${pnr}]]
+Flight: [[${flightNumber}]]
+From: [[${origin}]] → [[${destination}]]
+Seat: [[${seat}]]
+
+Thank you for booking with AeroFlex.
