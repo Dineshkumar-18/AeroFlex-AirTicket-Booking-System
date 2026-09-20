@@ -1,0 +1,5 @@
+ALTER TABLE password_reset_tokens
+ALTER COLUMN expires_at DATETIMEOFFSET(7) NOT NULL;
+
+ALTER TABLE password_reset_tokens
+ALTER COLUMN used_at DATETIMEOFFSET(7) NULL;
