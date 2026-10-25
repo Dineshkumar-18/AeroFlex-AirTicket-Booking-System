@@ -19,4 +19,12 @@ public class JwtProperties {
 
     private long mfaLoginSetupTokenExpiration;
 
+    private String accessTokenCookieName = "accessToken";
+
+    private String refreshTokenCookieName = "refreshToken";
+
+    private boolean cookieSecure = true;
+
+    private String cookieSameSite = "None";
+
 }

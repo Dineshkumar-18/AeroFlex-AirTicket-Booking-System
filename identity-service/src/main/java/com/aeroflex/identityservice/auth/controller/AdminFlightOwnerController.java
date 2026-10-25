@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/acount/auth/admin/flight-owners")
+@RequestMapping("/api/account/auth/admin/flight-owners")
 public class AdminFlightOwnerController {
 
     private final FlightOwnerApprovalService approvalService;

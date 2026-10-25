@@ -45,3 +45,11 @@ build/
 # Application logs
 logs/
 *.log
+
+# Ignore .env files at the root and in any subfolder
+.env
+**/.env
+
+# Ignore environment variants (e.g., .env.local, .env.development, .env.production)
+.env.*
+**/.env.*

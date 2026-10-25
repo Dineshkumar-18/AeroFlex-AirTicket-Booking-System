@@ -35,8 +35,14 @@ import com.aeroflex.identityservice.user.repository.FlightOwnerProfileRepository
 import com.aeroflex.identityservice.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import jakarta.ws.rs.BadRequestException;
+import com.aeroflex.common.exception.BadRequestException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseCookie;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -45,8 +51,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -78,6 +88,16 @@ public class AuthServiceImpl implements AuthService {
     public AuthResponse login(
             LoginRequest request,
             LoginContext context
+    ) {
+        return login(request, context, getHttpServletResponse().orElse(null));
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse login(
+            LoginRequest request,
+            LoginContext context,
+            HttpServletResponse response
     ) {
 
         Authentication authentication =
@@ -115,6 +135,10 @@ public class AuthServiceImpl implements AuthService {
                 refreshToken
         );
 
+        if (response != null) {
+            setAuthCookies(response, accessToken, refreshToken);
+        }
+
         return AuthResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(refreshToken)
@@ -141,6 +165,14 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponse refreshToken(
             RefreshTokenRequest request) {
+        return refreshToken(request, getHttpServletResponse().orElse(null));
+    }
+
+    @Override
+    @Transactional
+    public AuthResponse refreshToken(
+            RefreshTokenRequest request,
+            HttpServletResponse response) {
 
         String refreshToken = request.refreshToken();
 
@@ -218,6 +250,10 @@ public class AuthServiceImpl implements AuthService {
         storedToken.setReplacedByTokenId(
                 newStoredToken.getId()
         );
+
+        if (response != null) {
+            setAuthCookies(response, newAccessToken, newRefreshToken);
+        }
 
         // 13. Return response
         return AuthResponse.builder()
@@ -405,15 +441,101 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void logout(String refreshToken) {
+        logout(refreshToken, getHttpServletResponse().orElse(null));
+    }
 
-        if (refreshToken == null || refreshToken.isBlank()) {
+    @Override
+    @Transactional
+    public void logout(String refreshToken, HttpServletResponse response) {
+
+        if (refreshToken != null && !refreshToken.isBlank()) {
+            try {
+                RefreshToken byRefreshToken = refreshTokenService.findByRefreshToken(refreshToken);
+                refreshTokenService.revoke(byRefreshToken);
+            } catch (ResourceNotFoundException ignored) {
+                // Token already revoked or not found
+            }
+        }
+
+        if (response != null) {
+            clearAuthCookies(response);
+        }
+    }
+
+    public void setAuthCookies(HttpServletResponse response, String accessToken, String refreshToken) {
+        if (response == null) {
             return;
         }
 
-        RefreshToken byRefreshToken = refreshTokenService.findByRefreshToken(refreshToken);
+        ResponseCookie accessCookie = buildAccessTokenCookie(accessToken);
+        ResponseCookie refreshCookie = buildRefreshTokenCookie(refreshToken);
 
-        refreshTokenService.revoke(byRefreshToken);
+        response.addHeader(HttpHeaders.SET_COOKIE, accessCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, refreshCookie.toString());
+    }
 
+    public void clearAuthCookies(HttpServletResponse response) {
+        if (response == null) {
+            return;
+        }
+
+        ResponseCookie clearAccessCookie = buildClearAccessTokenCookie();
+        ResponseCookie clearRefreshCookie = buildClearRefreshTokenCookie();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, clearAccessCookie.toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, clearRefreshCookie.toString());
+    }
+
+    public ResponseCookie buildAccessTokenCookie(String token) {
+        return ResponseCookie.from(jwtProperties.getAccessTokenCookieName(), token)
+                .httpOnly(true)
+                .secure(isCookieSecure())
+                .path("/")
+                .maxAge(Duration.ofMillis(jwtProperties.getAccessTokenExpiration()))
+                .sameSite(jwtProperties.getCookieSameSite())
+                .build();
+    }
+
+    public ResponseCookie buildRefreshTokenCookie(String token) {
+        return ResponseCookie.from(jwtProperties.getRefreshTokenCookieName(), token)
+                .httpOnly(true)
+                .secure(isCookieSecure())
+                .path("/api/account/auth")
+                .maxAge(Duration.ofMillis(jwtProperties.getRefreshTokenExpiration()))
+                .sameSite(jwtProperties.getCookieSameSite())
+                .build();
+    }
+
+    public ResponseCookie buildClearAccessTokenCookie() {
+        return ResponseCookie.from(jwtProperties.getAccessTokenCookieName(), "")
+                .httpOnly(true)
+                .secure(isCookieSecure())
+                .path("/")
+                .maxAge(Duration.ZERO)
+                .sameSite(jwtProperties.getCookieSameSite())
+                .build();
+    }
+
+    public ResponseCookie buildClearRefreshTokenCookie() {
+        return ResponseCookie.from(jwtProperties.getRefreshTokenCookieName(), "")
+                .httpOnly(true)
+                .secure(isCookieSecure())
+                .path("/api/account/auth")
+                .maxAge(Duration.ZERO)
+                .sameSite(jwtProperties.getCookieSameSite())
+                .build();
+    }
+
+    private boolean isCookieSecure() {
+        return jwtProperties.isCookieSecure() || "None".equalsIgnoreCase(jwtProperties.getCookieSameSite());
+    }
+
+    private Optional<HttpServletResponse> getHttpServletResponse() {
+        RequestAttributes attribs = RequestContextHolder.getRequestAttributes();
+        if (attribs instanceof ServletRequestAttributes servletRequestAttributes) {
+            return Optional.ofNullable(servletRequestAttributes.getResponse());
+        }
+        return Optional.empty();
     }
 
 

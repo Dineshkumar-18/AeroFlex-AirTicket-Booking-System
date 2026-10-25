@@ -110,9 +110,13 @@ public class RefreshTokenServiceImpl
             return null;
         }
 
+        String cookieName = jwtProperties.getRefreshTokenCookieName() != null
+                ? jwtProperties.getRefreshTokenCookieName()
+                : "refreshToken";
+
         return Arrays.stream(request.getCookies())
                 .filter(cookie ->
-                        "refreshToken".equals(cookie.getName()))
+                        cookieName.equals(cookie.getName()))
                 .map(Cookie::getValue)
                 .findFirst()
                 .orElse(null);
@@ -120,14 +124,23 @@ public class RefreshTokenServiceImpl
 
     @Override
     public void clearRefreshTokenCookie(HttpServletResponse response) {
+        if (response == null) {
+            return;
+        }
+
+        String cookieName = jwtProperties.getRefreshTokenCookieName() != null
+                ? jwtProperties.getRefreshTokenCookieName()
+                : "refreshToken";
+
+        boolean isSecure = jwtProperties.isCookieSecure() || "None".equalsIgnoreCase(jwtProperties.getCookieSameSite());
 
         ResponseCookie cookie =
-                ResponseCookie.from("refreshToken", "")
+                ResponseCookie.from(cookieName, "")
                         .httpOnly(true)
-                        .secure(true)
+                        .secure(isSecure)
                         .path("/api/account/auth")
                         .maxAge(Duration.ZERO)
-                        .sameSite("None")
+                        .sameSite(jwtProperties.getCookieSameSite())
                         .build();
 
         response.addHeader(

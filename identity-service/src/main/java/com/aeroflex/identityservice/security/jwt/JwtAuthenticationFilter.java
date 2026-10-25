@@ -3,9 +3,12 @@ package com.aeroflex.identityservice.security.jwt;
 import com.aeroflex.identityservice.security.service.CustomUserDetailsService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -20,6 +23,8 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     private final JwtService jwtService;
 
     private final CustomUserDetailsService userDetailsService;
@@ -31,41 +36,61 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        String jwt = extractJwt(request);
 
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-
+        if (jwt == null) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String jwt = authHeader.substring(7);
+        try {
+            String username = jwtService.extractUsername(jwt);
 
-        String username = jwtService.extractUsername(jwt);
+            if (username != null &&
+                    SecurityContextHolder.getContext().getAuthentication() == null) {
 
-        if (username != null &&
-                SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails =
+                        userDetailsService.loadUserByUsername(username);
 
-            UserDetails userDetails =
-                    userDetailsService.loadUserByUsername(username);
+                if (jwtService.isTokenValid(jwt, userDetails)) {
 
-            if (jwtService.isTokenValid(jwt,userDetails)) {
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails,
+                                    null,
+                                    userDetails.getAuthorities());
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,
-                                userDetails.getAuthorities());
+                    authentication.setDetails(
+                            new WebAuthenticationDetailsSource()
+                                    .buildDetails(request));
 
-                authentication.setDetails(
-                        new WebAuthenticationDetailsSource()
-                                .buildDetails(request));
-
-                SecurityContextHolder.getContext()
-                        .setAuthentication(authentication);
+                    SecurityContextHolder.getContext()
+                            .setAuthentication(authentication);
+                }
             }
+        } catch (Exception ex) {
+            logger.error("Failed to authenticate user via JWT: {}", ex.getMessage());
+            SecurityContextHolder.clearContext();
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private String extractJwt(HttpServletRequest request) {
+        String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            return authHeader.substring(7);
+        }
+
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("accessToken".equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
+                    return cookie.getValue();
+                }
+            }
+        }
+
+        return null;
     }
 }

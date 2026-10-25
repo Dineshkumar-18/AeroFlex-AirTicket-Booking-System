@@ -1,7 +1,7 @@
 package com.aeroflex.identityservice.auth.validator;
 
 import com.aeroflex.identityservice.auth.dto.request.ChangePasswordRequest;
-import jakarta.ws.rs.BadRequestException;
+import com.aeroflex.common.exception.BadRequestException;
 import org.springframework.stereotype.Component;
 
 @Component

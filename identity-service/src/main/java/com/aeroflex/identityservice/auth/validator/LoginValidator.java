@@ -2,7 +2,7 @@ package com.aeroflex.identityservice.auth.validator;
 
 import com.aeroflex.common.enums.UserStatus;
 import com.aeroflex.identityservice.user.entity.User;
-import jakarta.ws.rs.BadRequestException;
+import com.aeroflex.common.exception.BadRequestException;
 import org.springframework.stereotype.Component;
 
 @Component

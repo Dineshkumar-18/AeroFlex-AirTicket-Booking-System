@@ -4,7 +4,7 @@ import com.aeroflex.common.exception.ResourceNotFoundException;
 import com.aeroflex.identityservice.auth.enums.OwnerProfileStatus;
 import com.aeroflex.identityservice.user.entity.FlightOwnerProfile;
 import com.aeroflex.identityservice.user.repository.FlightOwnerProfileRepository;
-import jakarta.ws.rs.BadRequestException;
+import com.aeroflex.common.exception.BadRequestException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

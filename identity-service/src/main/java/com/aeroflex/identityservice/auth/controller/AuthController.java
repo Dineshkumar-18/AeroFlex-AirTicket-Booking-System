@@ -1,5 +1,6 @@
 package com.aeroflex.identityservice.auth.controller;
 
+import com.aeroflex.common.exception.BadRequestException;
 import com.aeroflex.common.response.ApiResponse;
 import com.aeroflex.identityservice.auth.dto.request.ChangePasswordRequest;
 import com.aeroflex.identityservice.auth.dto.request.ForgotPasswordRequest;
@@ -90,19 +91,21 @@ public class AuthController {
     @PostMapping("/user/login")
     public ResponseEntity<ApiResponse<AuthResponse>>
     loginUser(
-            @Valid @RequestBody LoginRequest request
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response
     ) {
 
-        AuthResponse response =
+        AuthResponse authResponse =
                 authService.login(
                         request,
-                        LoginContext.USER
+                        LoginContext.USER,
+                        response
                 );
 
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Login successful",
-                        response
+                        authResponse
                 )
         );
     }
@@ -110,19 +113,21 @@ public class AuthController {
     @PostMapping("/flight-owner/login")
     public ResponseEntity<ApiResponse<AuthResponse>>
     loginFlightOwner(
-            @Valid @RequestBody LoginRequest request
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response
     ) {
 
-        AuthResponse response =
+        AuthResponse authResponse =
                 authService.login(
                         request,
-                        LoginContext.FLIGHT_OWNER
+                        LoginContext.FLIGHT_OWNER,
+                        response
                 );
 
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Login successful",
-                        response
+                        authResponse
                 )
         );
     }
@@ -130,19 +135,21 @@ public class AuthController {
     @PostMapping("/admin/login")
     public ResponseEntity<ApiResponse<AuthResponse>>
     loginAdmin(
-            @Valid @RequestBody LoginRequest request
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response
     ) {
 
-        AuthResponse response =
+        AuthResponse authResponse =
                 authService.login(
                         request,
-                        LoginContext.ADMIN
+                        LoginContext.ADMIN,
+                        response
                 );
 
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Login successful",
-                        response
+                        authResponse
                 )
         );
     }
@@ -174,13 +181,26 @@ public class AuthController {
     @PostMapping("/refresh-token")
     public ResponseEntity<ApiResponse<AuthResponse>>
     refreshToken(
-            @RequestBody RefreshTokenRequest request
+            @RequestBody(required = false) RefreshTokenRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse
     ) {
+
+        String token = (request != null && request.refreshToken() != null && !request.refreshToken().isBlank())
+                ? request.refreshToken()
+                : refreshTokenService.extractRefreshToken(httpRequest);
+
+        if (token == null || token.isBlank()) {
+            throw new BadRequestException("Refresh token is required.");
+        }
+
+        AuthResponse authResponse =
+                authService.refreshToken(new RefreshTokenRequest(token), httpResponse);
 
         return ResponseEntity.ok(
                 ApiResponse.success(
                         "Token refreshed",
-                        authService.refreshToken(request)
+                        authResponse
                 )
         );
     }
@@ -208,9 +228,7 @@ public class AuthController {
 
         String refreshToken = refreshTokenService.extractRefreshToken(request);
 
-        authService.logout(refreshToken);
-
-        refreshTokenService.clearRefreshTokenCookie(response);
+        authService.logout(refreshToken, response);
 
         return ResponseEntity.ok(
                 ApiResponse.success(

@@ -25,4 +25,16 @@ public class GlobalExceptionHandler {
                         ApiResponse.error(ex.getMessage())
                 );
     }
+
+    @ExceptionHandler(InvalidStatusTransitionException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidStatusTransition(
+            InvalidStatusTransitionException ex
+    )
+    {
+        logger.error("Invalid status transition: {}",ex.getMessage(), ex);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(
+                        ApiResponse.error(ex.getMessage())
+                );
+    }
 }

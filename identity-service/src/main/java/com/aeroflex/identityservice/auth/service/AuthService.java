@@ -20,10 +20,21 @@ public interface AuthService {
             LoginContext context
     );
 
+    AuthResponse login(
+            LoginRequest request,
+            LoginContext context,
+            HttpServletResponse response
+    );
+
     UserResponse getCurrentUser();
 
     AuthResponse refreshToken(
             RefreshTokenRequest request
+    );
+
+    AuthResponse refreshToken(
+            RefreshTokenRequest request,
+            HttpServletResponse response
     );
 
     void changePassword(
@@ -36,5 +47,10 @@ public interface AuthService {
 
     void logout(
            String refreshToken
+    );
+
+    void logout(
+           String refreshToken,
+           HttpServletResponse response
     );
 }

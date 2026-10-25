@@ -43,6 +43,8 @@ jwt:
   secret-key: ${JWT_SECRET_KEY}
   access-token-expiration: 900000  # 15 Minutes
   refresh-token-expiration: 604800000  # 7 Days
+  cookie-secure: true
+  cookie-same-site: None
 
 
 security:
