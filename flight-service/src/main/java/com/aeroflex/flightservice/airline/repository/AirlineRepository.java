@@ -27,6 +27,9 @@ public interface AirlineRepository extends JpaRepository<Airline, UUID> {
             Pageable pageable
     );
 
+    Optional<Airline> findByIdIsActiveTrue(
+            UUID airlineId);
+
     @Query("""
         SELECT a
         FROM Airline a

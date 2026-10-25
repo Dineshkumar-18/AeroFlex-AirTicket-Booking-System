@@ -59,7 +59,7 @@ public class AircraftController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('FLIGHT_OWNER','ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<ApiResponse<Page<AircraftResponse>>> getAircrafts(
             @RequestParam(required = false) String search,
             @PageableDefault(
@@ -86,7 +86,7 @@ public class AircraftController {
     @GetMapping("/airline/{airlineId}")
     @PreAuthorize("hasAnyRole('ADMIN', 'FLIGHT_OWNER')")
     public ResponseEntity<ApiResponse<Page<AircraftResponse>>>
-    getAircraftsByAirline(
+    getAircraftByAirline(
             @PathVariable UUID airlineId,
             @PageableDefault(
                     size = 10,
@@ -103,7 +103,7 @@ public class AircraftController {
 
         return ResponseEntity.ok(
                 ApiResponse.success(
-                        "Airline aircrafts retrieved successfully",
+                        "Aircraft retrieved successfully",
                         response
                 )
         );
@@ -131,7 +131,7 @@ public class AircraftController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('FLIGHT_OWNER')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>>
     deleteAircraft(
             @PathVariable UUID id) {

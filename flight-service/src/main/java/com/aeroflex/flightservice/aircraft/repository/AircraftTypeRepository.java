@@ -31,7 +31,7 @@ public interface AircraftTypeRepository
             Pageable pageable
     );
 
-    Optional<AircraftType> findByIdAndActiveTrue(UUID id);
+    Optional<AircraftType> findByIdAndIsActiveTrue(UUID id);
 
 
 }

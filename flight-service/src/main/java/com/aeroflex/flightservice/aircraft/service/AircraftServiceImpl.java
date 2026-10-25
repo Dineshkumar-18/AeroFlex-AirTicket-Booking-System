@@ -4,9 +4,7 @@ import com.aeroflex.common.enums.RoleType;
 import com.aeroflex.common.exception.ConflictException;
 import com.aeroflex.common.exception.InvalidStatusTransitionException;
 import com.aeroflex.common.exception.ResourceNotFoundException;
-import com.aeroflex.common.response.PagedResponse;
 import com.aeroflex.common.security.SecurityUtils;
-import com.aeroflex.common.util.PageMapper;
 import com.aeroflex.flightservice.aircraft.dto.AircraftRequest;
 import com.aeroflex.flightservice.aircraft.dto.AircraftResponse;
 import com.aeroflex.flightservice.aircraft.entity.Aircraft;
@@ -14,20 +12,16 @@ import com.aeroflex.flightservice.aircraft.entity.AircraftType;
 import com.aeroflex.flightservice.aircraft.enums.AircraftStatus;
 import com.aeroflex.flightservice.aircraft.repository.AircraftRepository;
 import com.aeroflex.flightservice.aircraft.repository.AircraftTypeRepository;
-import com.aeroflex.flightservice.aircraft.service.AircraftService;
 import com.aeroflex.flightservice.airline.entity.Airline;
 import com.aeroflex.flightservice.airline.repository.AirlineRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.file.AccessDeniedException;
 import java.util.UUID;
-import java.util.logging.Logger;
 
 @Service
 @RequiredArgsConstructor
@@ -38,7 +32,6 @@ public class AircraftServiceImpl
     private final AircraftRepository aircraftRepository;
     private final AircraftTypeRepository aircraftTypeRepository;
     private final AirlineRepository airlineRepository;
-    private final Logger logger = Logger.getLogger(AircraftServiceImpl.class.getName());
 
     @Override
     @Transactional
@@ -50,36 +43,50 @@ public class AircraftServiceImpl
                         .trim()
                         .toUpperCase();
 
+        log.info(
+                "Creating aircraft with registration number: {}",
+                registration
+        );
+
         if (aircraftRepository
                 .existsByRegistrationNumberIgnoreCase(registration)) {
 
-            logger.info("Aircraft already exists with registration number: " + registration);
+            log.warn(
+                    "Aircraft creation failed: registration number '{}' already exists",
+                    registration
+            );
+
 
             throw new ConflictException(
-                    "Aircraft with registration number '"
-                            + registration
-                            + "' already exists"
+                    "Aircraft already exists!"
             );
         }
 
-        Airline airline = airlineRepository.findById(request.airlineId())
-                .orElseThrow(() -> new ResourceNotFoundException("Airline not found"));
+        Airline airline = airlineRepository.findByIdIsActiveTrue(request.airlineId())
+                .orElseThrow(() -> {
+
+                    log.warn(
+                            "Aircraft creation failed: airline not found, airlineId={}",
+                            request.airlineId()
+                    );
+
+                 return new ResourceNotFoundException("Airline not found");
+                });
 
         AircraftType aircraftType =
                 aircraftTypeRepository
-                        .findById(request.aircraftTypeId())
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Aircraft type not found"
-                                )
+                        .findByIdAndIsActiveTrue(request.aircraftTypeId())
+                        .orElseThrow(() -> {
+                            log.warn(
+                                    "Aircraft creation failed: aircraft type not found, aircraftTypeId={}",
+                                    request.aircraftTypeId()
+                            );
+                                   return new ResourceNotFoundException(
+                                            "Aircraft type not found"
+                                    );
+                                }
                         );
 
-
-        if (!aircraftType.isActive()) {
-            throw new ConflictException(
-                    "Selected aircraft type is inactive"
-            );
-        }
 
         Aircraft aircraft = Aircraft.builder()
                 .registrationNumber(registration)
@@ -96,21 +103,57 @@ public class AircraftServiceImpl
         Aircraft saved =
                 aircraftRepository.save(aircraft);
 
+        log.info(
+                "Aircraft created successfully: aircraftId={}, registrationNumber={}",
+                saved.getId(),
+                saved.getRegistrationNumber()
+        );
+
         return mapToResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public AircraftResponse getAircraftById(
-            UUID id) {
+    public AircraftResponse getAircraftById(UUID id) {
 
-        Aircraft aircraft =
-                aircraftRepository.findById(id)
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Aircraft not found"
-                                )
-                        );
+        Aircraft aircraft = aircraftRepository.findById(id)
+                .orElseThrow(() -> {
+                    log.warn("Aircraft not found: aircraftId={}", id);
+                    return new ResourceNotFoundException("Aircraft not found");
+                });
+
+        boolean isAdmin =
+                SecurityUtils.isRoleMatch(RoleType.ADMIN.name());
+
+        boolean isFlightOwner =
+                SecurityUtils.isRoleMatch(RoleType.FLIGHT_OWNER.name());
+
+        if (isAdmin) {
+            return mapToResponse(aircraft);
+        }
+
+        if (!isFlightOwner) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Access denied"
+            );
+        }
+
+        UUID flightOwnerId = SecurityUtils.getCurrentUserId();
+
+        boolean ownsAirline = airlineRepository.existsByIdAndOwnerId(
+                aircraft.getAirline().getId(),
+                flightOwnerId
+        );
+
+        if (!ownsAirline || !aircraft.isActive()) {
+            log.warn(
+                    "Aircraft access denied: aircraftId={}, flightOwnerId={}",
+                    id,
+                    flightOwnerId
+            );
+
+            throw new ResourceNotFoundException("Aircraft not found");
+        }
 
         return mapToResponse(aircraft);
     }
@@ -134,6 +177,11 @@ public class AircraftServiceImpl
                     );
         }
 
+        log.debug(
+                "Aircraft list retrieved successfully: totalElements={}",
+                aircraftPage.getTotalElements()
+        );
+
         return aircraftPage.map(this::mapToResponse);
     }
 
@@ -151,6 +199,12 @@ public class AircraftServiceImpl
             boolean flightOwnerExist = airlineRepository.existsByIdAndOwnerId(airlineId, flightOwnerId);
 
             if(!flightOwnerExist) {
+                log.warn(
+                        "Airline access denied: airlineId={}, flightOwnerId={}",
+                        airlineId,
+                        flightOwnerId
+                );
+
                 throw new ResourceNotFoundException("Airline not found");
             }
 
@@ -189,6 +243,12 @@ public class AircraftServiceImpl
                         id
                 )) {
 
+            log.warn(
+                    "Aircraft update failed: registration number '{}' already exists, aircraftId={}",
+                    registration,
+                    id
+            );
+
             throw new ConflictException(
                     "Aircraft with registration number '"
                             + registration
@@ -217,6 +277,12 @@ public class AircraftServiceImpl
                         : request.name().trim()
         );
 
+        log.info(
+                "Aircraft updated successfully: aircraftId={}, registrationNumber={}",
+                aircraft.getId(),
+                aircraft.getRegistrationNumber()
+        );
+
         return mapToResponse(aircraft);
     }
 
@@ -233,6 +299,7 @@ public class AircraftServiceImpl
                         );
 
         aircraft.setActive(false);
+        log.info("Aircraft soft-deleted successfully: aircraftId={}", id);
     }
 
     @Override
@@ -246,9 +313,9 @@ public class AircraftServiceImpl
                                 )
                         );
         aircraft.setActive(true);
+
+        log.info("Aircraft soft-delete reversed successfully: aircraftId={}", id);
     }
-
-
 
     private AircraftResponse mapToResponse(Aircraft aircraft) {
         AircraftType type = aircraft.getAircraftType();
@@ -273,12 +340,25 @@ public class AircraftServiceImpl
             AircraftStatus newStatus) {
 
         Aircraft aircraft = aircraftRepository.findById(aircraftId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException("Aircraft not found"));
+                .orElseThrow(() -> {
+                    log.warn(
+                            "Aircraft status change failed: aircraft not found, aircraftId={}",
+                            aircraftId
+                    );
+                        return new ResourceNotFoundException("Aircraft not found");
+                });
 
         AircraftStatus currentStatus = aircraft.getStatus();
 
         if (!currentStatus.canTransitionTo(newStatus)) {
+
+            log.warn(
+                    "Invalid aircraft status transition: aircraftId={}, currentStatus={}, requestedStatus={}",
+                    aircraftId,
+                    currentStatus,
+                    newStatus
+            );
+
             throw new InvalidStatusTransitionException(
                     "Invalid status transition: "
                             + currentStatus + " -> " + newStatus
@@ -286,6 +366,13 @@ public class AircraftServiceImpl
         }
 
         aircraft.setStatus(newStatus);
+
+        log.info(
+                "Aircraft status changed successfully: aircraftId={}, previousStatus={}, newStatus={}",
+                aircraftId,
+                currentStatus,
+                newStatus
+        );
     }
 
 }

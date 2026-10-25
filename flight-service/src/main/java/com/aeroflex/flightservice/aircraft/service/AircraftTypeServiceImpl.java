@@ -56,7 +56,7 @@ public class AircraftTypeServiceImpl
             UUID id) {
 
         AircraftType aircraftType =
-                aircraftTypeRepository.findByIdAndActiveTrue(id)
+                aircraftTypeRepository.findByIdAndIsActiveTrue(id)
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
                                         "Aircraft type not found"
